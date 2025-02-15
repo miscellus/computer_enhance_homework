@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-
+#define ABS(v) ((v) < 0 ? -(v) : (v))
 #define EXFIELD(v, h, l) (((v)>>(l))&((1<<(1+(h)-(l)))-1))
 #define EXBIT(v, b) (((v)>>(b))&1)
 
@@ -14,6 +14,7 @@ enum {
     OCV_MOV_RM_TF_R = 1,
     OCV_MOV_IMM_T_RM,
     OCV_MOV_IMM_T_R,
+    OCV_MOV_ACC_TF_M,
 };
 
 typedef uint8_t OcGroup;
@@ -36,7 +37,8 @@ typedef struct {
     uint8_t mode;
     uint8_t reg;
     uint8_t regMem;
-    uint16_t immediate;
+    uint16_t data;
+    uint16_t displacement;
 } OcInfo;
 
 // bits, hex, group, variant, base_byte_count
@@ -201,10 +203,10 @@ typedef struct {
     X("1001 1101", 0x9d, OC_TODO, 0, 1, 0) \
     X("1001 1110", 0x9e, OC_TODO, 0, 1, 0) \
     X("1001 1111", 0x9f, OC_TODO, 0, 1, 0) \
-    X("1010 0000", 0xa0, OC_TODO, 0, 1, 0) \
-    X("1010 0001", 0xa1, OC_TODO, 0, 1, 0) \
-    X("1010 0010", 0xa2, OC_TODO, 0, 1, 0) \
-    X("1010 0011", 0xa3, OC_TODO, 0, 1, 0) \
+    X("1010 0000", 0xa0, OC_MOV, OCV_MOV_ACC_TF_M, 3, 0) \
+    X("1010 0001", 0xa1, OC_MOV, OCV_MOV_ACC_TF_M, 3, OCF_W) \
+    X("1010 0010", 0xa2, OC_MOV, OCV_MOV_ACC_TF_M, 3, OCF_D) \
+    X("1010 0011", 0xa3, OC_MOV, OCV_MOV_ACC_TF_M, 3, OCF_D|OCF_W) \
     X("1010 0100", 0xa4, OC_TODO, 0, 1, 0) \
     X("1010 0101", 0xa5, OC_TODO, 0, 1, 0) \
     X("1010 0110", 0xa6, OC_TODO, 0, 1, 0) \
@@ -239,8 +241,8 @@ typedef struct {
     X("1100 0011", 0xc3, OC_TODO, 0, 1, 0) \
     X("1100 0100", 0xc4, OC_TODO, 0, 1, 0) \
     X("1100 0101", 0xc5, OC_TODO, 0, 1, 0) \
-    X("1100 0110", 0xc6, OC_TODO, 0, 1, 0) \
-    X("1100 0111", 0xc7, OC_TODO, 0, 1, 0) \
+    X("1100 0110", 0xc6, OC_MOV, OCV_MOV_IMM_T_RM, 2, 0) \
+    X("1100 0111", 0xc7, OC_MOV, OCV_MOV_IMM_T_RM, 2, OCF_W) \
     X("1100 1000", 0xc8, OC_TODO, 0, 1, 0) \
     X("1100 1001", 0xc9, OC_TODO, 0, 1, 0) \
     X("1100 1010", 0xca, OC_TODO, 0, 1, 0) \
@@ -299,11 +301,47 @@ typedef struct {
     X("1111 1111", 0xff, OC_TODO, 0, 1, 0) \
     /*end*/
 
-#define BUILD_OC_TABLE(_, byte1, group, variant, minLength, flags) {group, variant, minLength, flags, 0, 0, 0, 0},
+#define BUILD_OC_TABLE(_, byte1, group, variant, minLength, flags) {group, variant, minLength, flags, 0, 0, 0, 0, 0},
 
 static OcInfo OcInfoFromByte1[256] = {
 OC_INFO_LIST(BUILD_OC_TABLE)
 };
+
+static uint16_t GetWord(uint8_t *at)
+{
+    return (at[1] << 8) | at[0];
+}
+
+static uint16_t SignExtend(int8_t v)
+{
+    return (int16_t)v;
+}
+
+static uint32_t GetDisplacement(uint8_t *at, OcInfo *info)
+{
+    if (info->mode == 1) {
+        info->displacement = SignExtend(at[0]);
+        return 1;
+    } else if (info->mode == 2 || (info->mode == 0 && info->regMem == 6)) {
+        info->displacement = GetWord(at);
+        return 2;
+    }
+
+    return 0;
+}
+
+static uint32_t GetData(uint8_t *at, OcInfo *info)
+{
+    if (info->flags & OCF_W) {
+        info->data = GetWord(at);
+        return 2;
+    } else {
+        info->data = at[0];
+        return 1;
+    }
+
+    return 0;
+}
 
 static int GetOpcodeInfo(uint8_t *at, uint8_t *end, OcInfo *result) {
     assert(at < end);
@@ -319,22 +357,27 @@ static int GetOpcodeInfo(uint8_t *at, uint8_t *end, OcInfo *result) {
             info.reg = EXFIELD(at[1], 5, 3);
             info.regMem = EXFIELD(at[1], 2, 0);
 
-            if (info.mode == 1) {
-                info.immediate = at[info.length];
-                info.length += 1;
-            } else if (info.mode == 2 || (info.mode == 0 && info.regMem == 6)) {
-                info.length += 2;
-                info.immediate = (at[info.length-1]<<8) | at[info.length-2];
-            }
+            info.length += GetDisplacement(at + info.length, &info);
         } break;
 
-        // case (OC_MOV<<8)|OCV_MOV_IMM_T_RM: {
-        // } break;
+        case (OC_MOV<<8)|OCV_MOV_IMM_T_RM: {
+            assert(info.length == 2);
+
+            info.mode = EXFIELD(at[1], 7,6);
+            info.regMem = EXFIELD(at[1], 2, 0);
+
+            info.length += GetDisplacement(at + info.length, &info);
+            info.length += GetData(at + info.length, &info);
+        } break;
 
         case (OC_MOV<<8)|OCV_MOV_IMM_T_R: {
             info.reg = EXFIELD(at[0], 2, 0);
-            info.immediate = at[1];
-            if (info.flags & OCF_W) info.immediate |= at[2] << 8;
+            info.data = at[1];
+            if (info.flags & OCF_W) info.data |= at[2] << 8;
+        } break;
+
+        case (OC_MOV<<8)|OCV_MOV_ACC_TF_M: {
+            info.data = GetWord(at + 1);
         } break;
 
         default:
@@ -360,11 +403,17 @@ static const char *GetRegName(uint8_t w, uint8_t reg) {
     return registerNameLookup[w << 3 | reg]; 
 }
 
-static const char *GetEffectiveAddressOperand(uint8_t mode, uint8_t regMem, uint16_t immediate)
+static const char *GetEffectiveAddressOperand(uint8_t mode, uint8_t regMem, int16_t displacement)
 {
     static char buf[512] = {0};
     assert(regMem < 8);
-    assert(mode != 1 || immediate < 256);
+    assert(mode != 1 || ABS(displacement) < 128);
+
+    char dispOp = '+';
+    if (displacement < 0) {
+        dispOp = '-';
+        displacement = -displacement;
+    }
 
     const char *baseStrings[8] = {
         "bx + si",
@@ -377,14 +426,12 @@ static const char *GetEffectiveAddressOperand(uint8_t mode, uint8_t regMem, uint
         "bx",
     };
 
-    if (mode == 0) {
-        if (regMem == 6) {
-            snprintf(buf, sizeof buf, "[%d]", immediate);
-        } else {
-            snprintf(buf, sizeof buf, "[%s]", baseStrings[regMem]);
-        }
+    if (mode == 0 && regMem == 6) {
+        snprintf(buf, sizeof buf, "[%d]", displacement);
+    } else if (mode == 0 || displacement == 0) {
+        snprintf(buf, sizeof buf, "[%s]", baseStrings[regMem]);
     } else {
-        snprintf(buf, sizeof buf, "[%s + %d]", baseStrings[regMem], immediate);
+        snprintf(buf, sizeof buf, "[%s %c %d]", baseStrings[regMem], dispOp, displacement);
     }
 
     return buf;
@@ -403,10 +450,8 @@ static int PrintOpcode(OcInfo info, uint8_t **atPtr, uint8_t *end) {
 
     uint8_t w = (info.flags&OCF_W) ? 1 : 0;
     uint8_t d = (info.flags&OCF_D) ? 1 : 0;
-    uint8_t reg = info.reg;
-    uint8_t regMem = info.regMem;
-    const char *regName = GetRegName(w, reg);
-    const char *regMemName = GetRegName(w, regMem);
+    const char *regName = GetRegName(w, info.reg);
+    const char *regMemName = GetRegName(w, info.regMem);
 
     const char *operandL = NULL;
     const char *operandR = NULL;
@@ -421,7 +466,7 @@ static int PrintOpcode(OcInfo info, uint8_t **atPtr, uint8_t *end) {
                 operandR = regMemName;
             } else {
                 operandL = regName;
-                operandR = GetEffectiveAddressOperand(info.mode, info.regMem, info.immediate);
+                operandR = GetEffectiveAddressOperand(info.mode, info.regMem, info.displacement);
             }
 
             if (!d) {
@@ -433,8 +478,22 @@ static int PrintOpcode(OcInfo info, uint8_t **atPtr, uint8_t *end) {
             printf("mov %s, %s\n", operandL, operandR);
         } break;
 
+        case (OC_MOV<<8)|OCV_MOV_IMM_T_RM: {
+            operandL = GetEffectiveAddressOperand(info.mode, info.regMem, info.displacement);
+            printf("mov %s, %s %u\n", operandL, w?"word":"byte", info.data);
+        } break;
+
         case (OC_MOV<<8)|OCV_MOV_IMM_T_R: {
-            printf("mov %s, %u\n", regName, info.immediate);
+            printf("mov %s, %u\n", regName, info.data);
+        } break;
+
+        case (OC_MOV<<8)|OCV_MOV_ACC_TF_M: {
+            const char *a = w ? "ax" : "al";
+            if (d) {
+                printf("mov [%u], %s\n", info.data, a);
+            } else {
+                printf("mov %s, [%u]\n", a, info.data);
+            }
         } break;
 
         case OC_TODO:

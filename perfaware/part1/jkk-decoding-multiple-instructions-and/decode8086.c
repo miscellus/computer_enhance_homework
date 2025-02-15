@@ -26,6 +26,16 @@ int FileReadAllBytes(const char *path, uint8_t **contents, uint32_t *length) {
     return 0;
 }
 
+void DumpBytes(uint8_t *bytes, uint32_t length)
+{
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        fprintf(stderr, "%02x ", bytes[i]);
+        if ((i+1)%16 == 0) fprintf(stderr, "\n");
+    }
+    fprintf(stderr, "\n");
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) return -1;
 
@@ -34,14 +44,7 @@ int main(int argc, char **argv) {
 
     if (FileReadAllBytes(argv[1], &bytes, &length)) return -1;
 
-    #if 0
-    for (uint32_t i = 0; i < length; ++i)
-    {
-        fprintf(stderr, "%02x ", bytes[i]);
-        if ((i+1)%16 == 0) printf("\n");
-    }
-    fprintf(stderr, "\n");
-    #endif
+//    DumpBytes(bytes, length);
 
     printf("bits 16\n");
 
