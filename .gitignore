@@ -1,0 +1,4 @@
+**/jkk-*/*.elf
+**/jkk-*/output.bin
+**/jkk-*/output.asm
+*.pdf
