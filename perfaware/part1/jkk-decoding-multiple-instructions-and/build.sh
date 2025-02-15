@@ -5,7 +5,7 @@ set -xe
 gcc -Wall -Wextra -pedantic -ggdb -O0 decode8086.c -o decode8086.elf
 
 decode_and_compare() {
-  ./decode8086 "$1" > output.asm
+  ./decode8086.elf "$1" > output.asm
   nasm output.asm -o output.bin
   cmp output.bin "$1"
 }
