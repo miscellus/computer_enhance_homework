@@ -30,6 +30,9 @@ typedef struct {
     struct {
         BitLoc d;
         BitLoc w;
+        BitLoc s;
+        BitLoc v;
+        BitLoc z;
         BitLoc mod;
         BitLoc reg;
         BitLoc regMem;
@@ -69,9 +72,64 @@ static InstEncodingText instructionEncodingTexts[] = {
     {"pushf", "10011100", "Push flags"},
     {"popf",  "10011101", "Pop flags"},
     {"add",   "000000 d w | mod reg r/m | (DispL) | (DispH)", "Reg/memory with register to either"},
-    {"add",   "100000 s w | mod 010 r/m | (DispL) | (DispH) | DataL | (DataH)", "Immediate to register/memory"},
+    {"add",   "100000 s w | mod 000 r/m | (DispL) | (DispH) | DataL | (DataH)", "Immediate to register/memory"},
     {"add",   "0000010 w | DataL | (DataH)", "Immediate to accumulator"},
-
+    {"adc",   "000100 d w | mod reg r/m | (DispL) | (DispH) ", "Reg/memory with register to either"},
+    {"adc",   "100000 s w | mod 010 r/m | (DispL) | (DispH) | DataL | (DataH)", "Immediate to register/memory"},
+    {"adc",   "0001010 w | DataL | (DataH)", "Immediate to accumulator"},
+    {"inc",   "1111111 w | mod 0 0 0 r/m | (DispL) | (DispH)", "Register/memory"},
+    {"inc",   "01000 reg", "Register"},
+    {"aaa",   "00110111", "ASCII adjust for add"},
+    {"daa",   "00100111", "Decimal adjust for add"},
+    {"sub",   "001010 d w | mod reg r/m | (DispL) | (DispH)", "Reg/memory with register to either"},
+    {"sub",   "100000 s w | mod 101 r/m | (DispL) | (DispH) | DataL | (DataH)", "Immediate to register/memory"},
+    {"sub",   "0010110 w | DataL | (DataH)", "Immediate to accumulator"},
+    {"sbb",   "000110 d w | mod reg r/m | (DispL) | (DispH)", "Reg/memory with register to either"},
+    {"sbb",   "100000 s w | mod 011 r/m | (DispL) | (DispH) | DataL | (DataH)", "Immediate to register/memory"},
+    {"sbb",   "0001110 w | DataL | (DataH)", "Immediate to accumulator"},
+    {"dec",   "1111111 w | mod 0 0 1 r/m | (DispL) | (DispH)", "Register/memory"},
+    {"dec",   "01001 reg", "Register"},
+    {"neg",   "1111011 w | mod 011 r/m | (DispL) | (DispH)", "Change sign"},
+    {"cmp",   "001110 d w | mod reg r/m | (DispL) | (DispH)", "Register/memory with register"},
+    {"cmp",   "100000 s w | mod 111 r/m | (DispL) | (DispH) | DataL | (DataH)", "Immediate with register/memory"},
+    {"cmp",   "0011110 w | DataL | (DataH)", "Immediate with accumulator"},
+    {"aas",   "00111111", "ASCII adjust for subtract"},
+    {"das",   "00101111", "Decimal adjust for subtract"},
+    {"mul",   "1111011 w | mod 100 r/m | (DispL) | (DispH)", "Multiply (unsigned)"},
+    {"imul",  "1111011 w | mod 101 r/m | (DispL) | (DispH)", "Integer multiply (signed)"},
+    {"aam",   "11010100 | 00001010 | (DispL) | (DispH)", "ASCII adjust for multiply"},
+    {"div",   "1111011 w | mod 110 r/m | (DispL) | (DispH)", "Divide (unsigned)"},
+    {"idiv",  "1111011 w | mod 111 r/m | (DispL) | (DispH)", "Integer divide (signed)"},
+    {"aad",   "11010101 | 00001010 | (DispL) | (DispH)", "ASCII adjust for divide"},
+    {"cbw",   "10011000", "Convert byte to word"},
+    {"cwd",   "10011001", "Convert word to double word"},
+    {"not",   "1111011 w | mod 010 r/m | (DispL) | (DispH)", "Invert"},
+    {"shl",   "110100 v w | mod 100 r/m | (DispL) | (DispH)", "Shift logical/arithmetic left"},
+    {"shr",   "110100 v w | mod 101 r/m | (DispL) | (DispH)", "Shift logical right"},
+    {"sar",   "110100 v w | mod 111 r/m | (DispL) | (DispH)", "Shift arithmetic right"},
+    {"rol",   "110100 v w | mod 000 r/m | (DIspL) | (DispH)", "Rotate left"},
+    {"ror",   "110100 v w | mod 001 r/m | (DispL) | (DispH)", "Rotate right"},
+    {"rcl",   "110100 v w | mod 010 r/m | (DispL) | (DispH)", "Rotate through carry flag left"},
+    {"rcr",   "110100 v w | mod 011 r/m | (DispL) | (DispH)", "Rotate through carry flag right"},
+    {"and",   "001000 d w | mod reg r/m | (DispL) | (DispH)", "Reg/memory with register to either"},
+    {"and",   "1000000 w | mod 100 r/m | (DispL) | (DispH) | DataL | (DataH)", "Immediate to register/memory"},
+    {"and",   "0010010 w | DataL | (DataH)", "Immediate to accumulator"},
+    {"test",  "000100 d w | mod reg r/m | (DispL) | (DispH)", "Register/memory and register"},
+    {"test",  "1111011 w | mod 000 r/m | (DispL) | (DispH) | DataL | (DataH)", "Immediate data and register/memory"},
+    {"test",  "1010100 w | DataL", "Immediate data and accumulator"},
+    {"or",    "000010 d w | mod reg r/m | (DispL) | (DispH)", "Reg/memory with register to either"},
+    {"or",    "1000000 w | mod 001 r/m | (DispL) | (DispH) | DataL | (DispH)", "Immediate to register/memory"},
+    {"or",    "0000110 w | DataL | (DataH)", "Immediate to accumulator"},
+    {"xor",   "001100 d w | mod reg r/m | (DispL) | (DispH)", "Reg/memory and register to either"},
+    {"xor",   "1000000 w | mod 110 r/m  | (DispL) | (DispH) | DataL | (DataH)", "Immediate to register/memory"},
+    {"xor",   "0011010 w | DataL | (DataH)", "Immediate to accumulator"},
+    {"rep",   "1111001 z", "Repeat"},
+    {"movs",  "1010010 w", "Move byte/word"},
+    {"cmps",  "1010011 w", "Compare byte/word"},
+    {"scas",  "1010010 w", "Scan byte/word"},
+    {"lods",  "1010110 w", "Load byte/word to al/ax"},
+    {"stos",  "1010101 w", "Store byte/word from al/ax"},
+    /*{"", "", ""},*/
 };
 
 InstEncodingSpec Blegh(InstEncodingText iet) {
@@ -104,6 +162,22 @@ InstEncodingSpec Blegh(InstEncodingText iet) {
                 spec.loc.d = loc;
                 bit -= 1;
                 at += 1;
+            } else if (*at == 'v') {
+                spec.loc.s = loc;
+                bit -= 1;
+                at += 1;
+            } else if (*at == 'z') {
+                spec.loc.s = loc;
+                bit -= 1;
+                at += 1;
+            } else if (strncmp(at, "sr", 2) == 0) {
+                spec.loc.sr = loc;
+                bit -= 2;
+                at += 2;
+            } else if (*at == 's') {
+                spec.loc.s = loc;
+                bit -= 1;
+                at += 1;
             } else if (strncmp(at, "mod", 3) == 0) {
                 spec.loc.mod = loc;
                 bit -= 2;
@@ -116,10 +190,6 @@ InstEncodingSpec Blegh(InstEncodingText iet) {
                 spec.loc.regMem = loc;
                 bit -= 3;
                 at += 3;
-            } else if (strncmp(at, "sr", 2) == 0) {
-                spec.loc.regMem = loc;
-                bit -= 2;
-                at += 2;
             } else if (strncmp(at, "(DispL)", 7) == 0) {
                 spec.flags |= InstFlags_DispLo;
                 bit -= 8;
